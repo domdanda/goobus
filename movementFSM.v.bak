@@ -1,0 +1,105 @@
+module PlayerFSM (
+    input wire clk,         // Clock 
+    input wire reset,     
+    input wire [7:0] ps2_data, 
+    input wire bullet_hit,  
+    output reg [3:0] currentState, 
+    output reg northEnable, eastEnable, southEnable, westEnable 
+);
+
+parameter IDLE = 4'b0000;
+parameter MOVING_NORTH = 4'b0001;
+parameter MOVING_EAST = 4'b0010;
+parameter MOVING_SOUTH = 4'b0011;
+parameter MOVING_WEST = 4'b0100;
+parameter GAME_OVER = 4'b1111; // Game over state
+
+reg [3:0] nextState;
+
+always @ (posedge clk or posedge reset)
+begin
+    if (reset)
+    begin
+        currentState <= IDLE;
+    end
+    else
+        currentState <= nextState;
+end
+
+always @*
+begin
+    case (currentState)
+        IDLE:
+            begin
+                case (ps2_data)
+                    8'h1D: nextState = MOVING_NORTH; // 'W' key
+                    8'h1C: nextState = MOVING_WEST; // 'A' key
+                    8'h1B: nextState = MOVING_SOUTH; // 'S' key
+                    8'h23: nextState = MOVING_EAST; // 'D' key
+                    default: nextState = IDLE; 
+                endcase
+            end
+
+        MOVING_NORTH:
+            begin
+                case (ps2_data)
+                    8'h1D: nextState = MOVING_NORTH; // 'W' key
+                    8'h1C: nextState = MOVING_WEST; // 'A' key
+                    8'h1B: nextState = MOVING_SOUTH; // 'S' key
+                    8'h23: nextState = MOVING_EAST; // 'D' key
+                    default: nextState = IDLE; 
+                endcase
+            end
+
+        MOVING_EAST:
+            begin
+                case (ps2_data)
+                    8'h1D: nextState = MOVING_NORTH; // 'W' key
+                    8'h1C: nextState = MOVING_WEST; // 'A' key
+                    8'h1B: nextState = MOVING_SOUTH; // 'S' key
+                    8'h23: nextState = MOVING_EAST; // 'D' key
+                    default: nextState = IDLE; 
+                endcase
+            end
+
+        MOVING_SOUTH:
+            begin
+                case (ps2_data)
+                    8'h1D: nextState = MOVING_NORTH; // 'W' key
+                    8'h1C: nextState = MOVING_WEST; // 'A' key
+                    8'h1B: nextState = MOVING_SOUTH; // 'S' key
+                    8'h23: nextState = MOVING_EAST; // 'D' key
+                    default: nextState = IDLE; 
+                endcase
+            end
+
+        MOVING_WEST:
+            begin
+                case (ps2_data)
+                    8'h1D: nextState = MOVING_NORTH; // 'W' key
+                    8'h1C: nextState = MOVING_WEST; // 'A' key
+                    8'h1B: nextState = MOVING_SOUTH; // 'S' key
+                    8'h23: nextState = MOVING_EAST; // 'D' key
+                    default: nextState = IDLE; 
+                endcase
+            end
+
+        default:
+            nextState = IDLE;
+    endcase
+end
+
+// Output logic for movement direction enables
+always @*
+begin
+    //nextState = currentState;
+    northEnable = (nextState == MOVING_NORTH) ? 1'b1 : 1'b0;
+    eastEnable = (nextState == MOVING_EAST) ? 1'b1 : 1'b0;
+    southEnable = (nextState == MOVING_SOUTH) ? 1'b1 : 1'b0;
+    westEnable = (nextState == MOVING_WEST) ? 1'b1 : 1'b0;
+
+    if (bullet_hit)
+        nextState = GAME_OVER;
+end
+
+endmodule

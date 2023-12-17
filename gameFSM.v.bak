@@ -1,0 +1,108 @@
+module GameFSM (
+    input wire clk,                 // Clock signal
+    input wire reset,               // Reset signal
+    input wire player_lose,        
+    input wire player_won,         
+    input wire player_pause,   
+    input wire exit_game,           
+
+    output reg [3:0] currentState  
+);
+
+//data path is responsible for sending if the player has been hit (1 or 0),
+// if the player is in the correct room (1 or 0), if player has press P (1 or 0),
+// the datapath can call again to see if we have ended the program or else,
+//instead of using the end program here, they can end program in the datapath,
+// 
+
+//open game, press start->go to the first room, player can pause (game freeze),
+//if gameover or win, exit the program(exit state)
+// Define states for the overall gameplay FSM
+
+//newstates: 
+parameter INITIALIZATION = 4'b0000;
+parameter MENU = 4'b0001;
+parameter GAME_PROGRESSING = 4'b0010;
+parameter PAUSE = 4'b0011;
+parameter GAMEOVER = 4'b0100;
+parameter WIN = 4'b0101;
+parameter ENDPROGRAM = 4'b0110;
+
+reg [3:0] nextState;
+//reg [21:0] pause_counter;
+
+always @ (posedge clk or posedge reset)
+begin
+    if (reset)
+    begin
+        currentState <= INITIALIZATION;
+        //pause_counter <= 22'b0;
+    end
+    else
+        currentState <= nextState;
+end
+
+always @(*) begin //change to posedge of the input if need
+    //state <= nextState;
+    case(currentState)
+        INITIALIZATION: begin
+            nextState = MENU;
+        end
+        MENU: begin
+            if (player_won) begin
+                nextState = WIN;
+            end else if (player_lose) begin
+                nextState = GAMEOVER;
+            end else if (player_pause) begin
+                nextState = PAUSE;
+            end else if (exit_game) begin
+                nextState = ENDPROGRAM;
+            end /*else if begin
+                nextState = GAME;
+            end*/ else begin
+                nextState = MENU;
+            end
+        end
+        GAME_PROGRESSING: begin
+            if (player_lose) begin
+                nextState = GAMEOVER;
+            end else if (player_won) begin
+                nextState = WIN;
+            end else if (player_pause) begin
+                nextState = PAUSE;
+            end else begin
+                nextState = GAME_PROGRESSING;
+            end
+        end
+        PAUSE: begin
+            if (exit_game == 1'b1) begin
+                nextState = ENDPROGRAM;
+            end else if (player_pause == 1'b0) begin
+                nextState = GAME_PROGRESSING;
+            end else begin
+                nextState = PAUSE;
+            end
+        end
+        GAMEOVER, WIN: begin
+            if (exit_game) begin
+                nextState = ENDPROGRAM;
+            end else begin
+                nextState = MENU;
+            end
+        end
+        ENDPROGRAM: begin
+            nextState = ENDPROGRAM;
+        end
+        default: nextState = INITIALIZATION;
+    endcase
+end
+
+
+//assign current_state = state;
+
+/*always @*
+begin
+    current_state = state;
+end*/
+
+endmodule

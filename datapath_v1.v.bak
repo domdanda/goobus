@@ -1,0 +1,164 @@
+module datapath(
+    input [3:0] mvState,        // movement fsm state
+    input clk,                  // Assumed to be CLOCK_50
+    input [3:0] roomType,       // What room type current room is
+    input reset,
+
+    output reg bullet_hit,          
+    output reg roomIsClear,
+    output reg [1:0] nextRoomDir,
+    output reg [14:0] updatedPlayerPos,
+    output reg [14:0] buttonPos_out
+);
+
+    // Registers ===================================================================
+    
+    reg [14:0] playerPos = 15'b000100100001001;         // Format: (y, x) = [14:8, 7:0]
+                                                        // Default position is (9, 9), or just outside the boundary
+                                                        // Screen is 160x120, so 8 bits for x, 7 bits for y
+                                                        // Player position is the top-left corner of the 8x8 player hitbox
+    
+    reg [2:0] buttonCounter = 0;            // Gets incramented every time a button is pressed
+                                            // If counter is at 4, then room is clear
+    
+	reg [19:0] rdCounter = 0;				// Used for rate divider (rd)
+											// 50MHZ -> 60hz, count to 833333.33 -> 833334 to do one clock cycle
+                                            // log2(833...) = 19.66 -> 20 bits
+
+    reg moveCounter = 0;                    // Used for movement - move every other frame
+    reg shootCounter = 0;                   // Used for fire rate of turrets
+    reg atEdge = 0;
+    
+    // **************** temporary, to be improved later *******************************
+    // some random point (y, x) = (60, 80) = (0111100, 01010000)
+    reg [14:0] buttonPos = 15'011110001010000
+    /*
+        in the future, scale up
+        output a 2d array where each row is the data of one button
+        set current room button positions based on passed in room type
+    */
+    // *******************************************************************************
+
+    /*
+        bullets - store in a memory module
+        turrets and buttons - store locations here locally for easy of access? or memory module
+    */
+    // =============================================================================
+
+    // Local state parameters ======================================================
+    parameter IDLE = 4'b0000;
+    parameter MOVING_NORTH = 4'b0001;
+    parameter MOVING_EAST = 4'b0010;
+    parameter MOVING_SOUTH = 4'b0011;
+    parameter MOVING_WEST = 4'b0100;
+
+    parameter VELOCITY = 2'b01;
+    parameter YBOUND_N = 112;
+    parameter YBOUND_S = 8;
+    parameter XBOUND_E = 152;
+    parameter XBOUND_W = 8;
+
+    parameter NORTH = 2'b00;
+    parameter SOUTH = 2'b01;
+    parameter EAST = 2'b10;
+    parameter WEST = 2'b11;
+
+    parameter NUMBUTTONS = 1; // aim to set to 3'b100 - 4 buttons
+    // =============================================================================
+
+    always @ (posedge clk) begin
+        if (rdCounter == 833334) begin
+            
+            // reset counter
+            rdCounter = 0;
+
+        // UPDATE PLAYER ==============================================================================
+            // check if collide with button
+            // check if collide with door (and button clear is 1)
+            // if both pass the move
+
+            /*
+                for every button
+                    if playerx == curbuttonx && playery == curbuttony
+                        trigger button press
+            */
+            buttonPos_out = buttonPos;
+
+            // Player is standing on button
+            if (playerPos[7:0] == buttonPos[7:0] && playerPos[14:8] == buttonPos[14:8]) begin
+                buttonCounter = buttonCounter + 1;
+            end
+            
+
+            // Checks if all the buttons have been pressed - sets roomIsClear signal
+            if (buttonCounter == NUMBUTTONS) begin
+                roomIsClear = 1;
+            end
+            else begin
+                roomIsClear = 0;
+            end
+
+            // Detecting if player is at one of the edges of the screen
+            // If they are, stop moving
+            // Also check if the room is clear - sets what the next room will be
+            // the +7 for x and -7 for y are if the player is at an edge at the opposite side of the sprite top left corner (8 is the width of the sprite)
+            if (playerPos[7:0] <= XBOUND_W) begin
+                atEdge = 1;
+
+                if (roomIsClear) nextRoomDir = WEST;
+            end
+            else if (playerPos[7:0] + 3'b111 >= XBOUND_E) begin
+                atEdge = 1;
+
+                if (roomIsClear) nextRoomDir = EAST;
+            end
+            else if (playerPos[14:8] >= YBOUND_N) begin
+                atEdge = 1;
+
+                if (roomIsClear) nextRoomDir = NORTH;
+            end
+            else if (playerPos[14:8] - 3'b111 <= YBOUND_S) begin
+                atEdge = 1;
+
+                if (roomIsClear) nextRoomDir = SOUTH;
+            end
+            else begin
+                atEdge = 0;
+            end 
+                
+            // only update player and bullets if they haven't cleared the room yet
+            if (!roomIsClear) begin
+                if (moveCounter) begin
+                    moveCounter = 0;
+
+                    // Update player position - do not move if at edge
+                    if (!atEdge) begin
+                        case (mvState)
+                            MOVING_NORTH: playerPos[14:8] = playerPos[14:8] + VELOCITY;
+                            MOVING_SOUTH: playerPos[14:8] = playerPos[14:8] - VELOCITY;
+                            MOVING_EAST: playerPos[7:0] = playerPos[7:0] + VELOCITY;
+                            MOVING_WEST: playerPos[7:0] = playerPos[7:0] - VELOCITY;
+                            default: ; // Do nothing
+                        endcase
+                    end
+                end
+                else begin
+                    moveCounter = 1;
+                end
+
+                updatedPlayerPos = playerPos;
+        // UPDATE BULLETS  =========================================================================
+            // have a loop that runs through every bullet
+            // check if offscreen - disable
+            // check if collide with player - gameover
+            // if both do not happen then update position
+
+            end
+        end
+        else begin
+            rdCounter = rdCounter + 1;
+        end
+
+    end
+
+endmodule

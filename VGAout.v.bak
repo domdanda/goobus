@@ -1,0 +1,192 @@
+module VGAout
+	(
+		CLOCK_50,						//	On Board 50 MHz
+		// Your inputs and outputs here
+		KEY,							// On Board Keys
+		SW,
+		// The ports below are for the VGA output.  Do not change.
+		VGA_CLK,   						//	VGA Clock
+		VGA_HS,							//	VGA H_SYNC
+		VGA_VS,							//	VGA V_SYNC
+		VGA_BLANK,						//	VGA BLANK
+		VGA_SYNC,						//	VGA SYNC
+		VGA_R,   						//	VGA Red[9:0]
+		VGA_G,	 						//	VGA Green[9:0]
+		VGA_B   						//	VGA Blue[9:0]
+	);
+	
+	//+----------------+//
+	//| 3rd party code |//
+	//+----------------+//
+
+	input			CLOCK_50;				//	50 MHz
+	input	[3:0]	KEY;					
+	// Declare your inputs and outputs here
+	input [9:0] SW;
+	// Do not change the following outputs
+	output			VGA_CLK;   				//	VGA Clock
+	output			VGA_HS;					//	VGA H_SYNC
+	output			VGA_VS;					//	VGA V_SYNC
+	output			VGA_BLANK;				//	VGA BLANK
+	output			VGA_SYNC;				//	VGA SYNC
+	output	[7:0]	VGA_R;   				//	VGA Red[7:0] Changed from 10 to 8-bit DAC
+	output	[7:0]	VGA_G;	 				//	VGA Green[7:0]
+	output	[7:0]	VGA_B;   				//	VGA Blue[7:0]
+	
+	wire resetn;
+	assign resetn = KEY[0];
+	
+	// Create the colour, x, y and writeEn wires that are inputs to the controller.
+
+	reg [5:0] colour;
+	reg [7:0] x;
+	reg [6:0] y;
+	
+	reg writeEn;
+	
+	// Create an Instance of a VGA controller - there can be only one!
+	// Define the number of colours as well as the initial background
+	// image file (.MIF) for the controller.
+	vga_adapter VGA(
+			.resetn(resetn),
+			.clock(CLOCK_50),
+			.colour(colour),
+			.x(x),
+			.y(y),
+			.plot(writeEn),
+			/* Signals for the DAC to drive the monitor. */
+			.VGA_R(VGA_R),
+			.VGA_G(VGA_G),
+			.VGA_B(VGA_B),
+			.VGA_HS(VGA_HS),
+			.VGA_VS(VGA_VS),
+			.VGA_BLANK(VGA_BLANK),
+			.VGA_SYNC(VGA_SYNC),
+			.VGA_CLK(VGA_CLK));
+		defparam VGA.RESOLUTION = "160x120";
+		defparam VGA.MONOCHROME = "FALSE";
+		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1; //must be set to 2 on the DE1-SoC, but double buffer doesnt fit on the DE1, so set to 1 in that case.
+		defparam VGA.BACKGROUND_IMAGE = "black.mif";
+			
+	// Put your code here. Your code should produce signals x,y,colour and writeEn ***END OF 3RD PARTY CODE***
+	
+	//+-------------+//
+	//| ROM-Sprites |//
+	//+-------------+//
+	
+	//player
+	player player1(playercounter + 2, CLOCK_50, playervisdata);
+	reg [5:0] playercounter;
+	wire [5:0] playervisdata;
+	
+	//blanking (only if no background), not technically rom here
+	reg [7:0] blankx;
+	reg [6:0] blanky;
+		
+	//+----------------+//
+	//| Testing things |//
+	//+----------------+//
+	
+	//this is a simple test for the VGA,
+	//it employs a simple movement scheme
+	//using the switches.
+	reg movementclock;
+	reg [24:0] movementclockcounter;
+	reg [7:0] playerx;
+	reg [6:0] playery;
+	
+	always @ (posedge movementclock)begin
+		playerx = playerx + SW[9:9] - SW[8:8];
+		playery = playery + SW[7:7] - SW[6:6];
+	end
+	
+	always @ (posedge CLOCK_50)begin
+		if(movementclockcounter < 1000000)begin
+			movementclockcounter = movementclockcounter + 1;
+		end
+		if(movementclockcounter == 1000000)begin
+			movementclock = !movementclock;
+			movementclockcounter = 0;
+		end
+	end
+	
+	
+	//+---------------------+//
+	//| Scene drawing logic |//
+	//+---------------------+//
+	
+	//graphical state FSM (this employs direct
+	//next state logic, rather than having it
+	//wait until the next clock cycle).
+	reg [2:0] graphicstate;
+	localparam
+		drawBACKGROUND = 0,
+		drawPLAYER = 1,
+		drawBULLETS = 2;
+	
+	//this is used to detect if Vsync was pulsed.
+	reg VGAVSprev;
+	
+	always @ (posedge CLOCK_50)begin
+		
+		//this will allow the scene to be drawn to memory
+		//upon seeing a negedge of vertical sync. it is
+		//important to do it this way because of multiple
+		//driver errors.
+		if(VGAVSprev == 1 && VGA_VS == 0)begin
+			writeEn = 1;
+			graphicstate = drawBACKGROUND;
+		end
+		else
+			VGAVSprev = VGA_VS;
+		
+		//draw the scene to memory when writeEn is high.
+		//no point in having writeEn high when we arent
+		//writing en-ything (hahahahha).
+		if(writeEn) begin
+			
+			//draw background
+			if(graphicstate == drawBACKGROUND)begin
+				if(blanky < 120) begin
+					colour = 0;
+					x = blankx;
+					y = blanky;
+					if(blankx < 160)begin
+						blankx = blankx + 1;
+					end
+					if(blankx == 160)begin
+						blankx = 0;
+						blanky = blanky + 1;
+					end
+				end
+				if(blanky == 120)begin
+					blanky = 0;
+					graphicstate = drawPLAYER;
+				end
+			end
+			
+			//draw turrets
+			
+			//draw player
+			if(graphicstate == drawPLAYER)begin
+				if(playercounter < 63)begin
+					if(playervisdata != 0)begin
+						x = playerx + playercounter[2:0];
+						y = playery + playercounter[5:3];
+						colour = playervisdata;
+					end
+					playercounter = playercounter + 1;
+				end
+				if(playercounter == 63)begin
+					playercounter = 0;
+					writeEn = 0;
+				end
+			end
+			
+			//draw bullets
+			
+		end
+	end
+	
+	
+endmodule
